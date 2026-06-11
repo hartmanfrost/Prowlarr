@@ -1,0 +1,30 @@
+# Weekly merge of upstream develop into the `ash` branch.
+# A merge conflict fails this job loudly — that usually means our upstream PRs
+# (#2699/#2700/#2701) were merged and the fork patches should be retired
+# (switch the cluster back to the official image).
+name: Sync ash with upstream develop
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ash
+          fetch-depth: 0
+      - name: Merge upstream develop
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/Prowlarr/Prowlarr.git
+          git fetch upstream develop
+          git merge --no-edit upstream/develop
+          git push origin ash
