@@ -384,6 +384,12 @@ namespace NzbDrone.Core.Indexers.Definitions
                 var infoUrl = _settings.BaseUrl + row.QuerySelector("td:nth-child(3) > a")?.GetAttribute("href");
                 var title = row.QuerySelector("td:nth-child(3) > a")?.TextContent.Trim() ?? string.Empty;
 
+                // The uploader (release author, column 4) identifies the dub studio for many
+                // releases (e.g. anime dubs like "Amanogawa"); that studio is never present in the
+                // topic title itself. Surface it as a release-group tag so it can be targeted by
+                // Custom Formats / quality profiles downstream.
+                var author = row.QuerySelector("td:nth-child(4)")?.TextContent.Trim();
+
                 var categoryLink = row.QuerySelector("td:nth-child(2) > a")?.GetAttribute("href") ?? string.Empty;
                 var cat = ParseUtil.GetArgumentFromQueryString(categoryLink, "f");
                 var categories = _categories.MapTrackerCatToNewznab(cat);
@@ -394,12 +400,19 @@ namespace NzbDrone.Core.Indexers.Definitions
                 // 2023-01-21
                 var added = row.QuerySelector("td:nth-child(13)")?.TextContent.Trim() ?? string.Empty;
 
+                var parsedTitle = _titleParser.Parse(title, categories, _settings.StripCyrillicLetters);
+
+                if (!string.IsNullOrWhiteSpace(author))
+                {
+                    parsedTitle = $"{parsedTitle} [{author.Trim()}]";
+                }
+
                 var release = new TorrentInfo
                 {
                     Guid = infoUrl,
                     InfoUrl = infoUrl,
                     DownloadUrl = _settings.BaseUrl + downloadUrl,
-                    Title = _titleParser.Parse(title, categories, _settings.StripCyrillicLetters),
+                    Title = parsedTitle,
                     Description = title,
                     Categories = categories,
                     Seeders = seeders,
