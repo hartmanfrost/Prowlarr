@@ -51,9 +51,9 @@ namespace NzbDrone.Core.Test.IndexerTests.AnidubTests
 
             var release = releases.Single() as TorrentInfo;
 
-            release.Title.Should().Be("Провожающая в последний путь Фрирен / Sousou no Frieren S1 [HDTV 1080p]");
+            release.Title.Should().Be("Провожающая в последний путь Фрирен / Sousou no Frieren S1 [WEBRip 1080p]");
             release.DownloadUrl.Should().Be("https://tr.anidub.com/engine/download.php?id=38377");
-            release.Resolution.Should().Be("HDTV 1080p");
+            release.Resolution.Should().Be("WEBRip 1080p");
             release.Seeders.Should().Be(12);
         }
     }

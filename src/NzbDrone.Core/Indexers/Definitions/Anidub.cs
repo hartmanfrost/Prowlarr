@@ -323,9 +323,9 @@ namespace NzbDrone.Core.Indexers.Definitions
             switch (quality.ToLowerInvariant())
             {
                 case "tv720":
-                    return "HDTV 720p";
+                    return "WEBRip 720p";
                 case "tv1080":
-                    return "HDTV 1080p";
+                    return "WEBRip 1080p";
                 case "bd720":
                     return "BDRip 720p";
                 case "bd1080":
