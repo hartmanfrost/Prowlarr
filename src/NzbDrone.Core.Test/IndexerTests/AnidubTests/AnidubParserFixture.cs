@@ -7,7 +7,6 @@ using NUnit.Framework;
 using NzbDrone.Common.Http;
 using NzbDrone.Core.Indexers;
 using NzbDrone.Core.Indexers.Definitions;
-using NzbDrone.Core.Indexers.Settings;
 using NzbDrone.Core.Parser.Model;
 using NzbDrone.Core.Test.Framework;
 
@@ -25,7 +24,7 @@ namespace NzbDrone.Core.Test.IndexerTests.AnidubTests
         [SetUp]
         public void Setup()
         {
-            var settings = new UserPassTorrentBaseSettings { BaseUrl = "https://tr.anidub.com/" };
+            var settings = new AnidubSettings { BaseUrl = "https://tr.anidub.com/" };
 
             var categories = new IndexerCapabilitiesCategories();
             categories.AddCategoryMapping(2, NewznabStandardCategory.TVAnime, "Аниме TV");
@@ -52,7 +51,7 @@ namespace NzbDrone.Core.Test.IndexerTests.AnidubTests
 
             var release = releases.Single() as TorrentInfo;
 
-            release.Title.Should().Be("Провожающая в последний путь Фрирен / Sousou no Frieren [28 из 28] [HDTV 1080p]");
+            release.Title.Should().Be("Провожающая в последний путь Фрирен / Sousou no Frieren S1 [HDTV 1080p]");
             release.DownloadUrl.Should().Be("https://tr.anidub.com/engine/download.php?id=38377");
             release.Resolution.Should().Be("HDTV 1080p");
             release.Seeders.Should().Be(12);
