@@ -454,9 +454,12 @@ namespace NzbDrone.Core.Indexers.Definitions
         private readonly Regex _tvTitleUkrEpisodeOfRegex = new(@"(?:Серії|Серія|Серій|Епізоди?)+\s*[:]*\s+(\d+(?:-\d+)?)\s*з\s*([\w?])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private readonly Regex _tvTitleUkrEpisodeRegex = new(@"(?:Серії|Серія|Серій|Епізоди?)+\s*[:]*\s+(\d+(?:-\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        private readonly Regex _tvTitleEngSeasonEpisodeOfRegex = new(@"Season\s*[:]*\s+(\d+).+(?:Episodes?)+\s*[:]*\s+(\d+(?:-\d+)?)\s*of\s*([\w?])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private readonly Regex _tvTitleEngSeasonEpisodeRegex = new(@"Season\s*[:]*\s+(\d+).+(?:Episodes?)+\s*[:]*\s+(\d+(?:-\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private readonly Regex _tvTitleEngSeasonRegex = new(@"Season\s*[:]*\s+(\d+(?:-\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private readonly Regex _tvTitleEngSeasonEpisodeOfRegex = new(@"Seasons?\s*[:]*\s+(\d+).+(?:Episodes?)+\s*[:]*\s+(\d+(?:-\d+)?)\s*of\s*([\w?])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private readonly Regex _tvTitleEngSeasonEpisodeRegex = new(@"Seasons?\s*[:]*\s+(\d+).+(?:Episodes?)+\s*[:]*\s+(\d+(?:-\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private readonly Regex _tvTitleEngSeasonRegex = new(@"Seasons?\s*[:]*\s+(\d+(?:-\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // Number-first season notation common on Cyrillic trackers (e.g. "7 season", "7 сезон").
+        private readonly Regex _tvTitleNumberFirstSeasonRegex = new(@"\b(\d+)\s+(?:season|сезон)\w*", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private readonly Regex _tvTitleEngEpisodeOfRegex = new(@"(?:Episodes?)+\s*[:]*\s+(\d+(?:-\d+)?)\s*of\s*([\w?])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private readonly Regex _tvTitleEngEpisodeRegex = new(@"(?:Episodes?)+\s*[:]+\s*[:]*\s+(\d+(?:-\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
@@ -476,6 +479,9 @@ namespace NzbDrone.Core.Indexers.Definitions
 
                 // special case for multiple seasons
                 title = _tvTitleMultipleSeasonsRegex.Replace(title, "S$1");
+
+                // number-first season notation (e.g. "7 season" / "7 сезон") -> "S7"
+                title = _tvTitleNumberFirstSeasonRegex.Replace(title, "S$1");
 
                 title = _tvTitleUkrSeasonEpisodeOfRegex.Replace(title, "S$1E$2 of $3");
                 title = _tvTitleUkrSeasonEpisodeRegex.Replace(title, "S$1E$2");

@@ -35,5 +35,22 @@ namespace NzbDrone.Core.Test.IndexerTests.TolokaTests
             _titleParser.Parse("Берсерк / Berserk (2016) WEB-DL 1080p Ukr/Jap", TvCategories, stripCyrillicLetters: true)
                 .Should().Be("Berserk (2016) WEB-DL 1080p Ukr/Jap");
         }
+
+        [Test]
+        public void should_normalize_plural_seasons_with_single_number()
+        {
+            // "Seasons 8" (plural with a single number) breaks Sonarr's parser: it fails
+            // language detection and falls back to the series default. Normalize to "S8".
+            _titleParser.Parse("Futurama (Seasons 8) (2023) WEB-DL 1080p 2xUkr/Eng | Sub Eng", TvCategories, stripCyrillicLetters: false)
+                .Should().Be("Futurama (S8) (2023) WEB-DL 1080p 2xUkr/Eng | Sub Eng");
+        }
+
+        [Test]
+        public void should_normalize_number_first_season_notation()
+        {
+            // Cyrillic trackers often write the season number first ("7 season" / "7 сезон").
+            _titleParser.Parse("The Simpsons (7 season) Ukr/Eng", TvCategories, stripCyrillicLetters: false)
+                .Should().Be("The Simpsons (S7) Ukr/Eng");
+        }
     }
 }
