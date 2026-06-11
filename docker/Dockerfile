@@ -1,4 +1,4 @@
-# Test image for Prowlarr with Anidub/Toloka/RuTracker title-parser fixes.
+# Prowlarr image for the ash cluster with Anidub/Toloka/RuTracker title-parser fixes.
 # Build stages run natively (BUILDPLATFORM), backend cross-publishes to linux-x64.
 FROM --platform=$BUILDPLATFORM node:20-bookworm AS frontend
 WORKDIR /build
