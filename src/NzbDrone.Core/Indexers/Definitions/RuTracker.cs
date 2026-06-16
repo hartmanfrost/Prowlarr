@@ -1582,6 +1582,16 @@ namespace NzbDrone.Core.Indexers.Definitions
 
         private readonly RuTrackerTitleParser _titleParser = new();
 
+        // RuTracker files anime films inside the general "Аниме" sub-forums (mapped to TVAnime),
+        // mixed with series, so Radarr's movie search (Movies categories) never surfaces them. A
+        // theatrical anime film carries a movie marker in its title — those releases are additionally
+        // tagged Movies so Radarr can find and match them. Series lack the marker and stay TV-only.
+        // "Ф[иі]льм" covers both the Russian (Фильм) and Ukrainian (Фільм) spellings — RuTracker is a
+        // Russian tracker, Toloka a Ukrainian one, so both forms appear in the wild.
+        private static readonly Regex AnimeMovieMarkerRegex = new(
+            @"\bMovie\b|Gekijou[- ]?ban|劇場版|\bФ[иі]льм\b",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         public RuTrackerParser(RuTrackerSettings settings, IndexerCapabilitiesCategories categories)
         {
             _settings = settings;
@@ -1626,6 +1636,7 @@ namespace NzbDrone.Core.Indexers.Definitions
 
             var title = qDetailsLink.TextContent.Trim();
             var categories = GetCategoryOfRelease(row);
+            AddAnimeMovieCategory(title, categories);
 
             var size = GetSizeOfRelease(row);
 
@@ -1680,6 +1691,19 @@ namespace NzbDrone.Core.Indexers.Definitions
             var cat = ParseUtil.GetArgumentFromQueryString(forum, "f");
 
             return _categories.MapTrackerCatToNewznab(cat);
+        }
+
+        internal static void AddAnimeMovieCategory(string title, ICollection<IndexerCategory> categories)
+        {
+            if (string.IsNullOrEmpty(title) ||
+                !categories.Contains(NewznabStandardCategory.TVAnime) ||
+                categories.Contains(NewznabStandardCategory.Movies) ||
+                !AnimeMovieMarkerRegex.IsMatch(title))
+            {
+                return;
+            }
+
+            categories.Add(NewznabStandardCategory.Movies);
         }
 
         private long GetSizeOfRelease(in IElement row)

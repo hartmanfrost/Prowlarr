@@ -357,6 +357,16 @@ namespace NzbDrone.Core.Indexers.Definitions
 
         private readonly TolokaTitleParser _titleParser = new();
 
+        // Toloka files anime films inside the general "Аніме" forum (mapped to TVAnime), mixed with
+        // series, so Radarr's movie search (Movies categories) never surfaces them. A theatrical
+        // anime film carries a movie marker in its title — those releases are additionally tagged
+        // Movies so Radarr can find and match them. Series lack the marker and stay TV-only.
+        // "Ф[иі]льм" covers both the Russian (Фильм) and Ukrainian (Фільм) spellings — Toloka is a
+        // Ukrainian tracker, RuTracker a Russian one, so both forms appear in the wild.
+        private static readonly Regex AnimeMovieMarkerRegex = new(
+            @"\bMovie\b|Gekijou[- ]?ban|劇場版|\bФ[иі]льм\b",
+            RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         public TolokaParser(TolokaSettings settings, IndexerCapabilitiesCategories categories)
         {
             _settings = settings;
@@ -393,6 +403,7 @@ namespace NzbDrone.Core.Indexers.Definitions
                 var categoryLink = row.QuerySelector("td:nth-child(2) > a")?.GetAttribute("href") ?? string.Empty;
                 var cat = ParseUtil.GetArgumentFromQueryString(categoryLink, "f");
                 var categories = _categories.MapTrackerCatToNewznab(cat);
+                AddAnimeMovieCategory(title, categories);
 
                 var seeders = ParseUtil.CoerceInt(row.QuerySelector("td:nth-child(10) > b")?.TextContent);
                 var peers = seeders + ParseUtil.CoerceInt(row.QuerySelector("td:nth-child(11) > b")?.TextContent.Trim());
@@ -443,6 +454,19 @@ namespace NzbDrone.Core.Indexers.Definitions
             }
 
             return releaseInfos.ToArray();
+        }
+
+        internal static void AddAnimeMovieCategory(string title, ICollection<IndexerCategory> categories)
+        {
+            if (string.IsNullOrEmpty(title) ||
+                !categories.Contains(NewznabStandardCategory.TVAnime) ||
+                categories.Contains(NewznabStandardCategory.Movies) ||
+                !AnimeMovieMarkerRegex.IsMatch(title))
+            {
+                return;
+            }
+
+            categories.Add(NewznabStandardCategory.Movies);
         }
 
         public Action<IDictionary<string, string>, DateTime?> CookiesUpdater { get; set; }
