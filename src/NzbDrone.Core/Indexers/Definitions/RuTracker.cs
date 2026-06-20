@@ -36,6 +36,12 @@ namespace NzbDrone.Core.Indexers.Definitions
         public override IndexerPrivacy Privacy => IndexerPrivacy.SemiPrivate;
         public override IndexerCapabilities Capabilities => SetCapabilities();
 
+        // RuTracker rate-limits aggressively (HTTP 429) and intermittently 500/520s under burst load
+        // when several *arr apps query through Prowlarr at once. The 2s default lets bursts trip the
+        // limit; the resulting failures make Sonarr/Radarr mark the indexer unavailable and skip it,
+        // so its (often only) Russian releases never reach the *arr. Space requests further apart.
+        public override TimeSpan RateLimit => TimeSpan.FromSeconds(5);
+
         public RuTracker(IIndexerHttpClient httpClient, IEventAggregator eventAggregator, IIndexerStatusService indexerStatusService, IConfigService configService, Logger logger)
             : base(httpClient, eventAggregator, indexerStatusService, configService, logger)
         {
