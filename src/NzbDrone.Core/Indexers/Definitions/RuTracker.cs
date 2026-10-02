@@ -1484,7 +1484,7 @@ namespace NzbDrone.Core.Indexers.Definitions
 
         public IndexerPageableRequestChain GetSearchRequests(MovieSearchCriteria searchCriteria)
         {
-            return GetPageableRequests(searchCriteria.SearchTerm, searchCriteria.Categories);
+            return GetPageableRequests(searchCriteria.SearchTerm, searchCriteria.Categories, yearFallback: true);
         }
 
         public IndexerPageableRequestChain GetSearchRequests(MusicSearchCriteria searchCriteria)
@@ -1504,13 +1504,30 @@ namespace NzbDrone.Core.Indexers.Definitions
 
         public IndexerPageableRequestChain GetSearchRequests(BasicSearchCriteria searchCriteria)
         {
-            return GetPageableRequests(searchCriteria.SearchTerm, searchCriteria.Categories);
+            return GetPageableRequests(searchCriteria.SearchTerm, searchCriteria.Categories, yearFallback: true);
         }
 
-        private IndexerPageableRequestChain GetPageableRequests(string searchTerm, int[] categories, int season = 0)
+        private IndexerPageableRequestChain GetPageableRequests(string searchTerm, int[] categories, int season = 0, bool yearFallback = false)
         {
             var pageableRequests = new IndexerPageableRequestChain();
 
+            AddRequests(pageableRequests, searchTerm, categories, season);
+
+            if (yearFallback)
+            {
+                // Later tiers only run when the exact-year tier returned no valid releases
+                foreach (var variant in YearFallbackTerms.Variants(searchTerm))
+                {
+                    pageableRequests.AddTier();
+                    AddRequests(pageableRequests, variant, categories, season);
+                }
+            }
+
+            return pageableRequests;
+        }
+
+        private void AddRequests(IndexerPageableRequestChain pageableRequests, string searchTerm, int[] categories, int season)
+        {
             if (categories is { Length: > 0 })
             {
                 var trackerCategories = _capabilities.Categories.MapTorznabCapsToTrackers(categories).Distinct().ToList();
@@ -1525,8 +1542,6 @@ namespace NzbDrone.Core.Indexers.Definitions
             {
                 pageableRequests.Add(GetPagedRequests(searchTerm, null, season));
             }
-
-            return pageableRequests;
         }
 
         private IEnumerable<IndexerRequest> GetPagedRequests(string term, string[] trackerCategories, int season = 0)

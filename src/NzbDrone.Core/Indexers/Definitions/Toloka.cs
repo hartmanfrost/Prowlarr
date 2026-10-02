@@ -266,7 +266,7 @@ namespace NzbDrone.Core.Indexers.Definitions
         {
             var pageableRequests = new IndexerPageableRequestChain();
 
-            pageableRequests.Add(GetPagedRequests($"{searchCriteria.SanitizedSearchTerm}", searchCriteria.Categories));
+            AddWithYearFallback(pageableRequests, $"{searchCriteria.SanitizedSearchTerm}", searchCriteria.Categories);
 
             return pageableRequests;
         }
@@ -309,9 +309,20 @@ namespace NzbDrone.Core.Indexers.Definitions
         {
             var pageableRequests = new IndexerPageableRequestChain();
 
-            pageableRequests.Add(GetPagedRequests($"{searchCriteria.SanitizedSearchTerm}", searchCriteria.Categories));
+            AddWithYearFallback(pageableRequests, $"{searchCriteria.SanitizedSearchTerm}", searchCriteria.Categories);
 
             return pageableRequests;
+        }
+
+        private void AddWithYearFallback(IndexerPageableRequestChain pageableRequests, string term, int[] categories)
+        {
+            pageableRequests.Add(GetPagedRequests(term, categories));
+
+            // Later tiers only run when the exact-year tier returned no valid releases
+            foreach (var variant in YearFallbackTerms.Variants(term))
+            {
+                pageableRequests.AddTier(GetPagedRequests(variant, categories));
+            }
         }
 
         private IEnumerable<IndexerRequest> GetPagedRequests(string term, int[] categories)
