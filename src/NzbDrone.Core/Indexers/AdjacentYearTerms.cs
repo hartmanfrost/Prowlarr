@@ -7,9 +7,9 @@ namespace NzbDrone.Core.Indexers
     /// <summary>
     /// Radarr queries text-only trackers as "&lt;Title&gt; &lt;TMDB year&gt;", but the tracker topic is often tagged
     /// with a neighbouring year (festival premiere vs. release). Radarr accepts a release whose year is the movie
-    /// Year or SecondaryYear, and the latter is normally one year off, so adjacent years are worth a retry.
+    /// Year or SecondaryYear, and the latter is normally one year off, so the adjacent years are queried alongside the exact one.
     /// </summary>
-    internal static class YearFallbackTerms
+    internal static class AdjacentYearTerms
     {
         private static readonly Regex TrailingYearRegex = new Regex(@"^(?<title>.*\S)\s+(?<year>(?:19|20)\d{2})$", RegexOptions.Compiled);
 

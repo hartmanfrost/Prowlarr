@@ -38,6 +38,12 @@ namespace NzbDrone.Core.Indexers.Definitions
         {
         }
 
+        protected override IList<ReleaseInfo> CleanupReleases(IEnumerable<ReleaseInfo> releases, SearchCriteriaBase searchCriteria)
+        {
+            // Adjacent-year queries share a tier, so one topic can come back from more than one of them
+            return base.CleanupReleases(releases, searchCriteria).DistinctBy(r => r.Guid).ToList();
+        }
+
         public override IIndexerRequestGenerator GetRequestGenerator()
         {
             return new TolokaRequestGenerator(Settings, Capabilities);
@@ -266,7 +272,7 @@ namespace NzbDrone.Core.Indexers.Definitions
         {
             var pageableRequests = new IndexerPageableRequestChain();
 
-            AddWithYearFallback(pageableRequests, $"{searchCriteria.SanitizedSearchTerm}", searchCriteria.Categories);
+            AddWithAdjacentYears(pageableRequests, $"{searchCriteria.SanitizedSearchTerm}", searchCriteria.Categories);
 
             return pageableRequests;
         }
@@ -309,19 +315,19 @@ namespace NzbDrone.Core.Indexers.Definitions
         {
             var pageableRequests = new IndexerPageableRequestChain();
 
-            AddWithYearFallback(pageableRequests, $"{searchCriteria.SanitizedSearchTerm}", searchCriteria.Categories);
+            AddWithAdjacentYears(pageableRequests, $"{searchCriteria.SanitizedSearchTerm}", searchCriteria.Categories);
 
             return pageableRequests;
         }
 
-        private void AddWithYearFallback(IndexerPageableRequestChain pageableRequests, string term, int[] categories)
+        private void AddWithAdjacentYears(IndexerPageableRequestChain pageableRequests, string term, int[] categories)
         {
             pageableRequests.Add(GetPagedRequests(term, categories));
 
-            // Later tiers only run when the exact-year tier returned no valid releases
-            foreach (var variant in YearFallbackTerms.Variants(term))
+            // Same tier as the exact year: a hit for one year must not hide releases tagged with the other
+            foreach (var variant in AdjacentYearTerms.Variants(term))
             {
-                pageableRequests.AddTier(GetPagedRequests(variant, categories));
+                pageableRequests.Add(GetPagedRequests(variant, categories));
             }
         }
 

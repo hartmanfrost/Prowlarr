@@ -47,6 +47,12 @@ namespace NzbDrone.Core.Indexers.Definitions
         {
         }
 
+        protected override IList<ReleaseInfo> CleanupReleases(IEnumerable<ReleaseInfo> releases, SearchCriteriaBase searchCriteria)
+        {
+            // Adjacent-year queries share a tier, so one topic can come back from more than one of them
+            return base.CleanupReleases(releases, searchCriteria).DistinctBy(r => r.Guid).ToList();
+        }
+
         public override IIndexerRequestGenerator GetRequestGenerator()
         {
             return new RuTrackerRequestGenerator(Settings, Capabilities);
@@ -1484,7 +1490,7 @@ namespace NzbDrone.Core.Indexers.Definitions
 
         public IndexerPageableRequestChain GetSearchRequests(MovieSearchCriteria searchCriteria)
         {
-            return GetPageableRequests(searchCriteria.SearchTerm, searchCriteria.Categories, yearFallback: true);
+            return GetPageableRequests(searchCriteria.SearchTerm, searchCriteria.Categories, adjacentYears: true);
         }
 
         public IndexerPageableRequestChain GetSearchRequests(MusicSearchCriteria searchCriteria)
@@ -1504,21 +1510,20 @@ namespace NzbDrone.Core.Indexers.Definitions
 
         public IndexerPageableRequestChain GetSearchRequests(BasicSearchCriteria searchCriteria)
         {
-            return GetPageableRequests(searchCriteria.SearchTerm, searchCriteria.Categories, yearFallback: true);
+            return GetPageableRequests(searchCriteria.SearchTerm, searchCriteria.Categories, adjacentYears: true);
         }
 
-        private IndexerPageableRequestChain GetPageableRequests(string searchTerm, int[] categories, int season = 0, bool yearFallback = false)
+        private IndexerPageableRequestChain GetPageableRequests(string searchTerm, int[] categories, int season = 0, bool adjacentYears = false)
         {
             var pageableRequests = new IndexerPageableRequestChain();
 
             AddRequests(pageableRequests, searchTerm, categories, season);
 
-            if (yearFallback)
+            if (adjacentYears)
             {
-                // Later tiers only run when the exact-year tier returned no valid releases
-                foreach (var variant in YearFallbackTerms.Variants(searchTerm))
+                // Same tier as the exact year: a hit for one year must not hide releases tagged with the other
+                foreach (var variant in AdjacentYearTerms.Variants(searchTerm))
                 {
-                    pageableRequests.AddTier();
                     AddRequests(pageableRequests, variant, categories, season);
                 }
             }
