@@ -1746,6 +1746,15 @@ namespace NzbDrone.Core.Indexers.Definitions
         private readonly Regex _tvTitleRusSeasonAnimeRegex = new(@"ТВ[-]*(?:(\d+))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private readonly Regex _tvTitleRusEpisodeAnimeOfRegex = new(@"\[(\d+(\+\d+)?)\s+из\s+(\d+(\+\d+)?)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        // "[12 из 12]", "[12+6 из 12+6]", "[01-08 из 12]", "[08 из XX]": aired / total episodes of an anime season;
+        // "+N" bonus counts (specials, OVA) are ignored, "XX" marks an unknown total (ongoing)
+        private readonly Regex _tvTitleAnimeEpisodeCountRegex = new(@"\[(?:(?<from>\d+)-)?(?<aired>\d+)(?:\+\d+)*\s+из\s+(?<total>\d+|XX)(?:\+\d+)*\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private readonly Regex _tvTitleAnimeSeasonTokenRegex = new(@"(?<=[\(\[])S(?<season>\d+)(?=[\)\]])", RegexOptions.Compiled);
+        private readonly Regex _tvTitleAnimeSpecialTagRegex = new(@"\[TV\b[^\]]*\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // "(S3) / High School DxD Born / ..." is left behind once the russian title in front of the season token is stripped
+        private readonly Regex _tvTitleStrandedSeasonRegex = new(@"^[^a-zA-Z\[\(]*(?<token>\(S\d+(?:E\d+(?:-\d+)?)?\))\s*/\s*(?<name>[^/\[]+?)\s*(?=/|\[|$)", RegexOptions.Compiled);
+
         public string Parse(string title,
                             ICollection<IndexerCategory> categories,
                             bool stripCyrillicLetters = true,
@@ -1770,7 +1779,7 @@ namespace NzbDrone.Core.Indexers.Definitions
                 title = _tvTitleRusEpisodeOfRegex.Replace(title, "E$1 of $2");
                 title = _tvTitleRusEpisodeRegex.Replace(title, "E$1");
                 title = _tvTitleRusSeasonAnimeRegex.Replace(title, "S$1");
-                title = _tvTitleRusEpisodeAnimeOfRegex.Replace(title, "E$1 of $3");
+                title = NormalizeAnimeSeason(title);
             }
             else if (IsAnyMovieCategory(categories))
             {
@@ -1807,6 +1816,12 @@ namespace NzbDrone.Core.Indexers.Definitions
             if (stripCyrillicLetters)
             {
                 title = _stripCyrillicRegex.Replace(title, string.Empty).Trim(' ', '-');
+
+                if (IsAnyTvCategory(categories))
+                {
+                    // move the stranded season token behind the first latin title, where Sonarr expects it
+                    title = _tvTitleStrandedSeasonRegex.Replace(title, "${name} ${token} ");
+                }
             }
 
             if (moveAllTagsToEndOfReleaseTitle)
@@ -1838,6 +1853,39 @@ namespace NzbDrone.Core.Indexers.Definitions
             title = Regex.Replace(title, @"\s+", " ");
 
             return title.Trim();
+        }
+
+        // RuTracker anime topics carry the season as "(ТВ-3)" and the episode count as "[12+6 из 12+6]".
+        // Sonarr reads "E12 of 12" as the single episode 12, so a season with all episodes aired becomes a plain
+        // season pack ("(S3)") and an ongoing one an episode range ("(S03E01-08)"). "Special" in the "[TV+Special]"
+        // tag makes Sonarr treat the whole pack as a special, so it is shortened to "SP".
+        private string NormalizeAnimeSeason(string title)
+        {
+            var season = _tvTitleAnimeSeasonTokenRegex.Match(title);
+            var counts = _tvTitleAnimeEpisodeCountRegex.Matches(title);
+
+            if (!season.Success || counts.Count == 0)
+            {
+                return _tvTitleRusEpisodeAnimeOfRegex.Replace(title, "E$1 of $3");
+            }
+
+            var count = counts[0];
+            var from = count.Groups["from"].Success ? int.Parse(count.Groups["from"].Value) : 1;
+            var aired = counts.Max(m => int.Parse(m.Groups["aired"].Value));
+            var complete = from == 1 && int.TryParse(count.Groups["total"].Value, out var total) && aired >= total;
+
+            title = _tvTitleAnimeEpisodeCountRegex.Replace(title, string.Empty);
+            title = _tvTitleAnimeSpecialTagRegex.Replace(title, m => Regex.Replace(m.Value, @"\bSpecials?\b", "SP", RegexOptions.IgnoreCase));
+
+            if (!complete)
+            {
+                var number = int.Parse(season.Groups["season"].Value);
+                var episodes = aired > from ? $"E{from:00}-{aired:00}" : $"E{aired:00}";
+
+                title = _tvTitleAnimeSeasonTokenRegex.Replace(title, $"S{number:00}{episodes}", 1);
+            }
+
+            return title;
         }
 
         private static bool IsAnyTvCategory(ICollection<IndexerCategory> category)
