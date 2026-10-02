@@ -667,7 +667,7 @@
     "IndexerIPTorrentsSettingsFreeleechOnlyHelpText": "Buscar solo lanzamientos freeleech",
     "IndexerNewznabSettingsAdditionalParametersHelpText": "Parámetros adicionales de Newznab",
     "IndexerNewznabSettingsApiKeyHelpText": "Clave API del sitio",
-    "IndexerNzbIndexSettingsApiKeyHelpText": "Clave API del sitio",
+    "IndexerNzbIndexSettingsApiKeyHelpText": "Clave API del sitio (opcional — la búsqueda funciona sin una, pero con un límite más bajo de ratio)",
     "IndexerPassThePopcornSettingsApiUserHelpText": "Estas opciones se encuentran en tus opciones de seguridad de PassThePopcorn (Editar perfil > Seguridad).",
     "IndexerPassThePopcornSettingsApiKeyHelpText": "Clave API del sitio",
     "IndexerRedactedSettingsApiKeyHelpText": "Clave API del sitio (encontrada en Opciones => Opciones de acceso)",
@@ -680,7 +680,7 @@
     "IndexerSettingsRssKey": "Clave RSS",
     "IndexerSettingsSeedRatio": "Ratio de sembrado",
     "IndexerSettingsSeedTimeHelpText": "El tiempo que un torrent debería ser sembrado antes de parar, vacío usa el predeterminado del cliente de descarga",
-    "IndexerMTeamTpSettingsApiKeyHelpText": "Clave API del sitio (encontrada en Panel de control de usuario => Seguridad => Laboratorio)",
+    "IndexerMTeamTpSettingsApiKeyHelpText": "Clave API del sitio (encontrada en Panel de control de usuario => Laboratorio)",
     "IndexerMTeamTpSettingsFreeleechOnlyHelpText": "Buscar solo lanzamientos freeleech",
     "Menu": "Menú",
     "Mixed": "Mezclado",
@@ -811,5 +811,12 @@
     "ApplicationAuthPassword": "Contraseña de autenticación",
     "ApplicationAuthPasswordHelpText": "Contraseña de autenticación básica en HTTP usada por {appName} cuando se accede a esta aplicación. Establecer si la aplicación se sitúa tras un proxy inverso protegido por autenticación básica.",
     "ApplicationAuthUsername": "Usuario de autenticación",
-    "ApplicationAuthUsernameHelpText": "Usuario de autenticación básico en HTTP usado por {appName} cuando se accede a esta aplicación. Establecer si la aplicación se sitúa tras un proxy inverso protegido por autenticación básica."
+    "ApplicationAuthUsernameHelpText": "Usuario de autenticación básico en HTTP usado por {appName} cuando se accede a esta aplicación. Establecer si la aplicación se sitúa tras un proxy inverso protegido por autenticación básica.",
+    "IndexerIPTorrentsSettingsSearchSortByHelpText": "Selecciona el orden en que se ordenan los resultados de búsqueda",
+    "IndexerIPTorrentsSettingsSearchSortBy": "Orden de búsqueda",
+    "AllowedHosts": "Hosts permitidos",
+    "AllowedHostsHelpText": "Lista separada por comas de nombres de host y direcciones IP para la que {appName} aceptará peticiones. Usa '*.' como un wildcard para subdominios. Dejar vacío para permitir todos los hosts.",
+    "AllowedHostsNotConfiguredHealthCheckMessage": "Hosts permitidos no está configurado, {appName} aceptará peticiones para cualquier nombre de host. Establece Hosts permitidos en Ajustes generales para restringir qué nombres de host pueden ser usados para alcanzar {appName}.",
+    "TrustedNetworks": "Redes de confianza",
+    "TrustedNetworksHelpText": "Lista separada por comas de direcciones IP o redes en notación CIDR en las que están los proxies inversos de confianza. P. ej. 172.17.0.1, 10.0.0.0/8 o fc00::/7. Añadir solo proxies que están configurados adecuadamente para enviar las cabeceras correctas."
 }

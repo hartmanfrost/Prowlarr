@@ -55,13 +55,6 @@ namespace NzbDrone.Core.Indexers.Definitions
             return new MyAnonamouseParser(Definition, Settings, Capabilities.Categories, _httpClient, _cacheManager, _logger);
         }
 
-        protected override Task<HttpRequest> GetDownloadRequest(Uri link)
-        {
-            var request = new HttpRequestBuilder(link.AbsoluteUri).Build();
-
-            return Task.FromResult(request);
-        }
-
         protected override IDictionary<string, string> GetCookies()
         {
             var cookies = base.GetCookies();
@@ -237,11 +230,10 @@ namespace NzbDrone.Core.Indexers.Definitions
                 { "tor[srchIn][narrator]", "true" },
                 { "tor[searchIn]", "torrents" },
                 { "tor[sortType]", "default" },
-                { "tor[perpage]", searchCriteria.Limit?.ToString() ?? "100" },
-                { "tor[startNumber]", searchCriteria.Offset?.ToString() ?? "0" },
+                { "tor[startNumber]", searchCriteria.Offset?.ToString(CultureInfo.InvariantCulture) ?? "0" },
+                { "perpage", searchCriteria.Limit?.ToString(CultureInfo.InvariantCulture) ?? "100" },
                 { "thumbnails", "1" }, // gives links for thumbnail sized versions of their posters
-                { "description", "1" }, // include the description
-                { "dlLink", "1" }, // include download link hash
+                { "description", "1" } // include the description
             };
 
             if (_settings.SearchInDescription)
@@ -435,7 +427,7 @@ namespace NzbDrone.Core.Indexers.Definitions
                 if (item.AuthorInfo != null)
                 {
                     var authorInfo = JsonConvert.DeserializeObject<Dictionary<string, string>>(item.AuthorInfo);
-                    var author = authorInfo?.Take(5).Select(v => v.Value).Join(", ");
+                    var author = authorInfo?.Take(5).Select(v => WebUtility.HtmlDecode(v.Value)).Join(", ");
 
                     if (author.IsNotNullOrWhiteSpace())
                     {
@@ -470,7 +462,7 @@ namespace NzbDrone.Core.Indexers.Definitions
 
                 var isFreeLeech = item.Free || item.PersonalFreeLeech || (hasUserVip && item.FreeVip);
 
-                release.DownloadUrl = GetDownloadUrl(id, item.DownloadHash, !isFreeLeech);
+                release.DownloadUrl = GetDownloadUrl(id, !isFreeLeech);
                 release.InfoUrl = $"{_settings.BaseUrl}t/{id}";
                 release.Guid = release.InfoUrl;
                 release.Categories = _categories.MapTrackerCatToNewznab(item.Category);
@@ -494,19 +486,18 @@ namespace NzbDrone.Core.Indexers.Definitions
             return releaseInfos.ToArray();
         }
 
-        private string GetDownloadUrl(int torrentId, string downloadHash, bool canUseToken)
+        private string GetDownloadUrl(int torrentId, bool canUseToken)
         {
-            var requestBuilder = new HttpRequestBuilder(_settings.BaseUrl)
-                .Resource("/tor/download.php/{downloadHash}")
-                .SetSegment("downloadHash", downloadHash)
+            var url = new HttpUri(_settings.BaseUrl)
+                .CombinePath("/tor/download.php")
                 .AddQueryParam("tid", torrentId);
 
             if (_settings.UseFreeleechWedge && canUseToken)
             {
-                requestBuilder = requestBuilder.AddQueryParam("fl", "1");
+                url = url.AddQueryParam("fl", "1");
             }
 
-            return requestBuilder.Build().Url.FullUri;
+            return url.FullUri;
         }
 
         private bool HasUserVip(Dictionary<string, string> cookies)
@@ -827,8 +818,6 @@ namespace NzbDrone.Core.Indexers.Definitions
         public int Leechers { get; init; }
         public int NumFiles { get; init; }
         public string Size { get; init; }
-        [JsonProperty(PropertyName = "dl")]
-        public string DownloadHash { get; init; }
     }
 
     internal class MyAnonamouseResponse
