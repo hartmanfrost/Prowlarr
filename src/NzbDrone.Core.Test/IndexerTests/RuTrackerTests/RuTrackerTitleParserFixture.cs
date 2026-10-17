@@ -37,6 +37,9 @@ namespace NzbDrone.Core.Test.IndexerTests.RuTrackerTests
         [TestCase("Фрирен, провожающая в последний путь (ТВ-2) / Sousou no Frieren 2nd Season / Frieren: Beyond Journey's End Season 2 [TV] [08 из 10] [RUS(ext), JAP+Sub] [2026, приключения, фэнтези, WEB-DL] [1080p]", "Sousou no Frieren 2nd Season (S02E01-08) / Frieren: Beyond Journey's End Season 2 [TV] [RUS(ext), JAP] [2026, WEB-DL] [1080p]")]
         [TestCase("Фрирен, провожающая в последний путь (ТВ-2) / Sousou no Frieren 2nd Season [TV] [01 из XX] [RUS(int), JAP+Sub] [2026, приключения, фэнтези, WEBRip] [1080p]", "Sousou no Frieren 2nd Season (S02E01) [TV] [RUS(int), JAP] [2026, WEBRip] [1080p]")]
         [TestCase("Фрирен, провожающая в последний путь (ТВ-2) / Sousou no Frieren 2nd Season [TV] [05-08 из 10] [RUS(ext), JAP+Sub] [2026, приключения, фэнтези, WEB-DL] [1080p]", "Sousou no Frieren 2nd Season (S02E05-08) [TV] [RUS(ext), JAP] [2026, WEB-DL] [1080p]")]
+        [TestCase("Сэкирэй (ТВ-2): Честная битва / Sekirei: Pure Engagement [TV+Special] [13+1 из 13+1] [RUS(ext), JAP+Sub] [2010, приключения, комедия, этти, BDRip] [1080p]", "Sekirei: Pure Engagement (S2) [TV+SP] [RUS(ext), JAP] [2010, BDRip] [1080p]")]
+        [TestCase("Сэкирэй [ТВ-2]: Честная битва / Sekirei: Pure Engagement [TV+Special] [13+1 из 13+1] [RUS(ext),JAP+Sub] [2010, приключения, комедия, этти, BDRip] [720p]", "Sekirei: Pure Engagement (S2) [TV+SP] [RUS(ext),JAP] [2010, BDRip] [720p]")]
+        [TestCase("Сэкирэй (ТВ-2) / Sekirei: Pure Engagement [TV+Special] [13+1 из 13+1] [RUS(int),JAP] [2010, приключения, комедия, этти, BDRip]", "Sekirei: Pure Engagement (S2) [TV+SP] [RUS(int),JAP] [2010, BDRip]")]
         [TestCase("Наруто / Naruto [ТВ-2] [500 из 500] [RUS(int), JAP] [2007, BDRip 720p]", "Naruto [S2] [RUS(int), JAP] [2007, BDRip 720p]")]
         public void should_normalize_anime_season_for_sonarr(string title, string expected)
         {

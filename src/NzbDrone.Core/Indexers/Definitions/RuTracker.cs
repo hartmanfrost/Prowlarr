@@ -1772,8 +1772,11 @@ namespace NzbDrone.Core.Indexers.Definitions
         private readonly Regex _tvTitleAnimeSeasonTokenRegex = new(@"(?<=[\(\[])S(?<season>\d+)(?=[\)\]])", RegexOptions.Compiled);
         private readonly Regex _tvTitleAnimeSpecialTagRegex = new(@"\[TV\b[^\]]*\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        // "(S3) / High School DxD Born / ..." is left behind once the russian title in front of the season token is stripped
-        private readonly Regex _tvTitleStrandedSeasonRegex = new(@"^[^a-zA-Z\[\(]*(?<token>\(S\d+(?:E\d+(?:-\d+)?)?\))\s*/\s*(?<name>[^/\[]+?)\s*(?=/|\[|$)", RegexOptions.Compiled);
+        // "(S3) / High School DxD Born / ..." is left behind once the russian title in front of the season token is stripped.
+        // A russian subtitle after the token leaves its punctuation behind ("Сэкирэй (ТВ-2): Честная битва / ..." becomes
+        // "(S2): / ..."), and some topics put the token in square brackets ("Сэкирэй [ТВ-2]: ..."); both are accepted and
+        // the token is always written back in parentheses.
+        private readonly Regex _tvTitleStrandedSeasonRegex = new(@"^[^a-zA-Z\[\(]*[\(\[](?<token>S\d+(?:E\d+(?:-\d+)?)?)[\)\]][\s:;,.!?-]*/\s*(?<name>[^/\[]+?)\s*(?=/|\[|$)", RegexOptions.Compiled);
 
         public string Parse(string title,
                             ICollection<IndexerCategory> categories,
@@ -1840,7 +1843,7 @@ namespace NzbDrone.Core.Indexers.Definitions
                 if (IsAnyTvCategory(categories))
                 {
                     // move the stranded season token behind the first latin title, where Sonarr expects it
-                    title = _tvTitleStrandedSeasonRegex.Replace(title, "${name} ${token} ");
+                    title = _tvTitleStrandedSeasonRegex.Replace(title, "${name} (${token}) ");
                 }
             }
 
