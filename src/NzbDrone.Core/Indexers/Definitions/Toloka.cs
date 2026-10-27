@@ -519,12 +519,45 @@ namespace NzbDrone.Core.Indexers.Definitions
 
         private readonly Regex _stripCyrillicRegex = new(@"(\([\p{IsCyrillic}\W]+\))|(^[\p{IsCyrillic}\W\d]+\/ )|([\p{IsCyrillic} \-]+,+)|([\p{IsCyrillic}]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        // Words mixing Latin and Cyrillic letters are typos with look-alike glyphs ("Wаrden", "2хUkr", "Cерії").
+        private static readonly Regex MixedScriptWordRegex = new(@"[\p{L}\p{Nd}]+", RegexOptions.Compiled);
+
+        private static readonly Dictionary<char, char> CyrillicToLatinHomoglyphs = new()
+        {
+            ['а'] = 'a', ['е'] = 'e', ['о'] = 'o', ['р'] = 'p', ['с'] = 'c', ['х'] = 'x', ['у'] = 'y', ['і'] = 'i', ['к'] = 'k',
+            ['А'] = 'A', ['В'] = 'B', ['Е'] = 'E', ['К'] = 'K', ['М'] = 'M', ['Н'] = 'H', ['О'] = 'O', ['Р'] = 'P', ['С'] = 'C', ['Т'] = 'T', ['Х'] = 'X', ['І'] = 'I'
+        };
+
+        private static readonly Dictionary<char, char> LatinToCyrillicHomoglyphs = CyrillicToLatinHomoglyphs.ToDictionary(kv => kv.Value, kv => kv.Key);
+
+        // Resolution written with a Cyrillic "р" ("1080р") or without the "p" right after the source ("WEB-DL 1080").
+        // Sonarr reads the bare number as a season/episode once the Cyrillic letter is stripped.
+        private readonly Regex _resolutionCyrillicPRegex = new(@"\b(480|576|720|1080|2160)р(?![\p{L}\d])", RegexOptions.Compiled);
+        private readonly Regex _resolutionBareRegex = new(@"\b((?:WEB-?DL|WEBRip|BDRip|BDRemux|HDTV|HDRip|DVDRip|TVRip)(?:-AVC)?(?:\s+(?:Ai\s+Rem|AI\s+Remaster))?\s+)(480|576|720|1080|2160)(?![\p{L}\d.])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // "(S1, 15 з 24)" / "(S2, 03 з 12-серій)": season, then episodes released so far out of the total.
+        private readonly Regex _tvTitleSeasonProgressRegex = new(@"\bS(\d+)\s*,\s*(\d+)\s*(?:з|із|из|of)\s*(\d+)(?:\s*-?\s*\p{L}+)?(?=[)\]])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // "S1E1-3 of 12": Sonarr only reads a two-digit range ("S01E01-03") and ignores "of N".
+        private readonly Regex _tvTitleEpisodeRangeOfRegex = new(@"\bS(\d+)E(\d+)(?:-(\d+))?\s+of\s+(\d+|XX|\?+)(?![\w])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // "[5/12]" / "[5 з 12]": episodes released so far out of the total, no season of its own.
+        private readonly Regex _tvTitleBracketProgressRegex = new(@"[\[(]\s*(\d+)\s*(?:/|з|із|из)\s*(\d+)\s*[\])]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private readonly Regex _tvTitleSeasonTokenRegex = new(@"\(S(\d+)\)", RegexOptions.Compiled);
+
+        private readonly Regex _keptTokenRegex = new(@"\((?:S|E)[^)]+\)", RegexOptions.Compiled);
+        private readonly Regex _segmentSeparatorRegex = new(@"\s/\s?", RegexOptions.Compiled);
+
         private readonly Regex _strandedTokenRegex = new(@"^[^a-zA-Z\[\(]*(\((?:S|E)[^)]+\))\s*/\s*", RegexOptions.Compiled);
 
         public string Parse(string title, ICollection<IndexerCategory> categories, bool stripCyrillicLetters = true)
         {
             // https://www.fileformat.info/info/unicode/category/Pd/list.htm
             title = Regex.Replace(title, @"\p{Pd}", "-", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+            title = MixedScriptWordRegex.Replace(title, FixMixedScriptWord);
+            title = _resolutionCyrillicPRegex.Replace(title, "$1p");
+            title = _resolutionBareRegex.Replace(title, "$1$2p");
 
             if (IsAnyTvCategory(categories))
             {
@@ -548,10 +581,15 @@ namespace NzbDrone.Core.Indexers.Definitions
                 title = _tvTitleEngSeasonRegex.Replace(title, "S$1");
                 title = _tvTitleEngEpisodeOfRegex.Replace(title, "E$1 of $2");
                 title = _tvTitleEngEpisodeRegex.Replace(title, "E$1");
+
+                title = _tvTitleSeasonProgressRegex.Replace(title, m => FormatSeasonEpisodes(m.Groups[1].Value, "1", m.Groups[2].Value, m.Groups[3].Value));
+                title = _tvTitleEpisodeRangeOfRegex.Replace(title, m => FormatSeasonEpisodes(m.Groups[1].Value, m.Groups[2].Value, m.Groups[3].Success ? m.Groups[3].Value : m.Groups[2].Value, m.Groups[4].Value));
+                title = NormalizeBracketProgress(title);
             }
 
             if (stripCyrillicLetters)
             {
+                title = DropCyrillicLeadingSegments(title);
                 title = _stripCyrillicRegex.Replace(title, string.Empty).Trim(' ', '-');
 
                 // When the stripped Cyrillic title contained converted season/episode tokens
@@ -583,6 +621,102 @@ namespace NzbDrone.Core.Indexers.Definitions
             title = Regex.Replace(title, @"\s+", " ");
 
             return title.Trim();
+        }
+
+        private static string FixMixedScriptWord(Match match)
+        {
+            var word = match.Value;
+            var latin = word.Count(c => c is >= 'A' and <= 'Z' or >= 'a' and <= 'z');
+            var cyrillic = word.Count(c => c is >= '\u0400' and <= '\u04FF');
+            if (latin == 0 || cyrillic == 0)
+            {
+                return word;
+            }
+
+            // Convert the minority script to the majority one, but only when every stray letter has a look-alike.
+            var toLatin = latin >= cyrillic;
+            var map = toLatin ? CyrillicToLatinHomoglyphs : LatinToCyrillicHomoglyphs;
+            var chars = word.ToCharArray();
+            for (var i = 0; i < chars.Length; i++)
+            {
+                var isStray = toLatin ? chars[i] is >= '\u0400' and <= '\u04FF' : chars[i] is >= 'A' and <= 'Z' or >= 'a' and <= 'z';
+                if (!isStray)
+                {
+                    continue;
+                }
+
+                if (!map.TryGetValue(chars[i], out var replacement))
+                {
+                    return word;
+                }
+
+                chars[i] = replacement;
+            }
+
+            return new string(chars);
+        }
+
+        // "S2", episodes first-last of total: a complete season has no episode token, a partial one is a two-digit range.
+        private static string FormatSeasonEpisodes(string season, string first, string last, string total)
+        {
+            var seasonNumber = int.Parse(season);
+            var firstNumber = int.Parse(first);
+            var lastNumber = int.Parse(last);
+
+            if (firstNumber == 1 && int.TryParse(total, out var totalNumber) && lastNumber >= totalNumber)
+            {
+                return $"S{seasonNumber}";
+            }
+
+            return lastNumber == firstNumber
+                ? $"S{seasonNumber:00}E{firstNumber:00}"
+                : $"S{seasonNumber:00}E{firstNumber:00}-{lastNumber:00}";
+        }
+
+        // "[5/12]" only becomes an episode range when the title names its season, e.g. "(S2)".
+        private string NormalizeBracketProgress(string title)
+        {
+            var seasonMatch = _tvTitleSeasonTokenRegex.Match(title);
+            if (!seasonMatch.Success || Regex.IsMatch(title, @"\bS\d+E\d+", RegexOptions.IgnoreCase))
+            {
+                return title;
+            }
+
+            return _tvTitleBracketProgressRegex.Replace(title, m =>
+            {
+                var formatted = FormatSeasonEpisodes(seasonMatch.Groups[1].Value, "1", m.Groups[1].Value, m.Groups[2].Value);
+                return formatted.Contains('E') ? $"({formatted})" : string.Empty;
+            });
+        }
+
+        // Drops " / "-separated leading segments that are mostly Cyrillic, so that Latin crumbs of the
+        // Ukrainian title ("IV / Full Metal Panic! IV ...", "OVA / Full Metal Panic! + OVA ...") do not survive
+        // the letter stripping. Season/episode tokens of the dropped segments are kept for relocation.
+        private string DropCyrillicLeadingSegments(string title)
+        {
+            var tokens = new List<string>();
+            while (true)
+            {
+                var separator = _segmentSeparatorRegex.Match(title);
+                if (!separator.Success)
+                {
+                    break;
+                }
+
+                var first = title.Substring(0, separator.Index);
+                var rest = title.Substring(separator.Index + separator.Length);
+                var latin = first.Count(c => c is >= 'A' and <= 'Z' or >= 'a' and <= 'z');
+                var cyrillic = first.Count(c => c is >= '\u0400' and <= '\u04FF');
+                if (cyrillic == 0 || cyrillic <= latin || !rest.Any(c => c is >= 'A' and <= 'Z' or >= 'a' and <= 'z'))
+                {
+                    break;
+                }
+
+                tokens.AddRange(_keptTokenRegex.Matches(first).Select(m => m.Value));
+                title = rest;
+            }
+
+            return tokens.Count == 0 ? title : $"{string.Join(" ", tokens)} / {title}";
         }
 
         private static bool IsAnyTvCategory(ICollection<IndexerCategory> category)
