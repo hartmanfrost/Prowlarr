@@ -1756,7 +1756,10 @@ namespace NzbDrone.Core.Indexers.Definitions
         private readonly Regex _stripCyrillicRegex = new(@"(\([\p{IsCyrillic}\W]+\))|(^[\p{IsCyrillic}\W\d]+\/ )|([\p{IsCyrillic} \-]+,+)|([\p{IsCyrillic}]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly Regex _tvTitleCommaRegex = new(@"\s(\d+),(\d+)", RegexOptions.Compiled);
-        private readonly Regex _tvTitleCyrillicXRegex = new(@"([\s-])Х+([\s\)\]])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // Cyrillic "ХХ" stands for an unknown episode count ("[01-03 из ХХ]", "Серии: 1-ХХ"), so it is only rewritten right
+        // after "из", a range dash or an opening bracket; a bare "х" between words is part of a title ("Охотник х Охотник")
+        private readonly Regex _tvTitleCyrillicXRegex = new(@"(?<=\bиз\s+|\d\s*-\s*|\[\s*)Х+(?=[\s\)\]])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private readonly Regex _tvTitleRusSeasonEpisodeOfRegex = new(@"Сезон\s*[:]*\s+(\d+).+(?:Серии|Эпизод|Выпуски)+\s*[:]*\s+(\d+(?:-\d+)?)\s*из\s*([\w?])", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private readonly Regex _tvTitleRusSeasonEpisodeRegex = new(@"Сезон\s*[:]*\s+(\d+).+(?:Серии|Эпизод|Выпуски)+\s*[:]*\s+(\d+(?:-\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -1778,6 +1781,39 @@ namespace NzbDrone.Core.Indexers.Definitions
         // the token is always written back in parentheses.
         private readonly Regex _tvTitleStrandedSeasonRegex = new(@"^[^a-zA-Z\[\(]*[\(\[](?<token>S\d+(?:E\d+(?:-\d+)?)?)[\)\]][\s:;,.!?-]*/\s*(?<name>[^/\[]+?)\s*(?=/|\[|$)", RegexOptions.Compiled);
 
+        // Tags in front of the title ("[ANIME4PSP] Name / Alt [2003, ...]") are kept out of the title segments.
+        private readonly Regex _titlePrefixTagsRegex = new(@"^(?:\[[^\]]*\]\s*)+(?=[^\[\s])", RegexOptions.Compiled);
+
+        // A season/episode token written by the rewrites above: "(S3)", "[S2]", "(S02E01-08)".
+        private readonly Regex _titleSeasonTokenRegex = new(@"[\(\[]S\d+(?:E\d+(?:-\d+)?)?[\)\]]", RegexOptions.Compiled);
+
+        // Episode info produced by the rewrites above ("S29E1-3", "S12-13", "E24 of 24"): a segment carrying it is kept even
+        // when it is mostly Cyrillic, western topics put the season and episodes in their own " / " segment. A bracketed
+        // season token ("(S3)", "(S02E01-08)") is not episode info, it is relocated instead.
+        private readonly Regex _titleEpisodeInfoRegex = new(@"\bS\d+E\d+|\bS\d+-\d+|\bE\d+|\bof\s+\d+", RegexOptions.Compiled);
+
+        // "[RUS(ext), JAP+Sub]", "[JAP]", "[RUS(int), UKR, ENG, JAP]": the audio list of an anime topic. It is told apart from
+        // other tags ("[TV]", "[Movie]", "[2015, ...]") by starting with a language code and holding only letters and separators.
+        private readonly Regex _animeAudioBracketRegex = new(@"\[(?:RUS?|JAP|JPN|ENG|UKR|CHI|KOR)\b[A-Za-z(),/+&\s]*\]", RegexOptions.Compiled);
+        private readonly Regex _animeRussianAudioRegex = new(@"\bRUS?\b", RegexOptions.Compiled);
+
+        // Markers of a season other than the first one in the title of a "[TV]" topic that carries no "(ТВ-N)" token: roman
+        // numerals, "2nd Season", "Part 2", "The Second Raid", a number closing a title segment ("... Samayou 3") and their
+        // russian counterparts. Sonarr maps "Full Metal Panic! Invisible Victory (S1)" to season 1 of Full Metal Panic!, so
+        // the implicit first season is not added when any of them is present.
+        private readonly Regex _titleSequelMarkerRegex = new(@"\b(?:II|III|IV|VI|VII|VIII|IX)\b|\bSeasons?\b|\bParts?\s*\d|\b(?:Second|Third|Fourth|Fifth|Final|Next|Another|Returns?)\b|\d(?:st|nd|rd|th)\b|(?:Сезон|Новый|Новая|Новое|Второй|Вторая|Третий|Финал|Продолжение)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private readonly Regex _titleTrailingNumberRegex = new(@"[A-Za-z!?.\)]\s+\d{1,2}$", RegexOptions.Compiled);
+
+        // "Name [Movie] [RUS(int), JAP] [2017, BDRip]": the tag between the title and the audio list hides the end of the title
+        // from Radarr, and the year has to sit next to the title to be recognised.
+        private readonly Regex _animeMovieTagRegex = new(@"^(?<name>[^\[\]]+?)[\s:;,.!?-]*\[Movie\]\s*(?<rest>.*)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private readonly Regex _titleYearBracketRegex = new(@"\[\s*(?<year>(?:19|20)\d{2})\s*[,\]]", RegexOptions.Compiled);
+
+        // Radarr reads an edition word right in front of the year ("Uncut", "Extended") as an edition and drops it from the
+        // title. After "&"/"and" it belongs to the title ("South Park: Bigger Longer & Uncut"), which it recognises again
+        // only when the year stands alone in its bracket.
+        private readonly Regex _movieTitleEditionRegex = new(@"(?<title>(?:&|\band)\s+(?:Uncut|Unrated|Uncensored|Extended|Unseen))\s*\[(?<year>(?:19|20)\d{2}),\s*(?<rest>[^\]]+)\]", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         public string Parse(string title,
                             ICollection<IndexerCategory> categories,
                             bool stripCyrillicLetters = true,
@@ -1794,7 +1830,7 @@ namespace NzbDrone.Core.Indexers.Definitions
             if (IsAnyTvCategory(categories))
             {
                 title = _tvTitleCommaRegex.Replace(title, " $1-$2");
-                title = _tvTitleCyrillicXRegex.Replace(title, "$1XX$2");
+                title = _tvTitleCyrillicXRegex.Replace(title, "XX");
 
                 title = _tvTitleRusSeasonEpisodeOfRegex.Replace(title, "S$1E$2 of $3");
                 title = _tvTitleRusSeasonEpisodeRegex.Replace(title, "S$1E$2");
@@ -1802,6 +1838,7 @@ namespace NzbDrone.Core.Indexers.Definitions
                 title = _tvTitleRusEpisodeOfRegex.Replace(title, "E$1 of $2");
                 title = _tvTitleRusEpisodeRegex.Replace(title, "E$1");
                 title = _tvTitleRusSeasonAnimeRegex.Replace(title, "S$1");
+                title = AddImplicitFirstSeason(title);
                 title = NormalizeAnimeSeason(title);
             }
             else if (IsAnyMovieCategory(categories))
@@ -1830,14 +1867,20 @@ namespace NzbDrone.Core.Indexers.Definitions
                 title = Regex.Replace(title, @"(\bSub\b[^+]*\b|\b[\+]*Sub[\+]*\b)", string.Empty);
             }
 
-            // language fix: all rutracker releases contains russian track
-            if (addRussianToTitle && (IsAnyTvCategory(categories) || IsAnyMovieCategory(categories)) && !Regex.Match(title, @"\bRUS\b", RegexOptions.IgnoreCase).Success)
+            // language fix: all rutracker releases contains russian track, except anime topics that list their audio
+            // explicitly without it ("[JAP]", "[JAP+Sub]"): those are subtitles-only releases
+            if (addRussianToTitle && (IsAnyTvCategory(categories) || IsAnyMovieCategory(categories)) && !Regex.Match(title, @"\bRUS\b", RegexOptions.IgnoreCase).Success && !HasAnimeAudioWithoutRussian(title, categories))
             {
                 title += " RUS";
             }
 
             if (stripCyrillicLetters)
             {
+                if (IsAnyTvCategory(categories) || IsAnyMovieCategory(categories))
+                {
+                    title = RemoveCyrillicSegments(title);
+                }
+
                 title = _stripCyrillicRegex.Replace(title, string.Empty).Trim(' ', '-');
 
                 if (IsAnyTvCategory(categories))
@@ -1845,6 +1888,16 @@ namespace NzbDrone.Core.Indexers.Definitions
                     // move the stranded season token behind the first latin title, where Sonarr expects it
                     title = _tvTitleStrandedSeasonRegex.Replace(title, "${name} (${token}) ");
                 }
+            }
+
+            if (categories.Contains(NewznabStandardCategory.TVAnime) && categories.Contains(NewznabStandardCategory.Movies))
+            {
+                title = NormalizeAnimeMovie(title);
+            }
+
+            if (IsAnyMovieCategory(categories))
+            {
+                title = _movieTitleEditionRegex.Replace(title, "${title} [${year}] [${rest}]");
             }
 
             if (moveAllTagsToEndOfReleaseTitle)
@@ -1876,6 +1929,182 @@ namespace NzbDrone.Core.Indexers.Definitions
             title = Regex.Replace(title, @"\s+", " ");
 
             return title.Trim();
+        }
+
+        private bool HasAnimeAudioWithoutRussian(string title, ICollection<IndexerCategory> categories)
+        {
+            if (!categories.Contains(NewznabStandardCategory.TVAnime))
+            {
+                return false;
+            }
+
+            var audio = _animeAudioBracketRegex.Matches(title);
+
+            return audio.Count > 0 && !audio.Any(m => _animeRussianAudioRegex.IsMatch(m.Value));
+        }
+
+        // Splits a title into the tags in front of it, the " / "-separated names and the rest starting at the first
+        // bracket. Only the names are rewritten by the callers.
+        private (string Prefix, List<string> Names, string Trailing, string Tail) SplitTitle(string title)
+        {
+            var prefix = _titlePrefixTagsRegex.Match(title);
+            var offset = prefix.Success ? prefix.Length : 0;
+            var bracket = title.IndexOf('[', offset);
+            var headEnd = bracket < 0 ? title.Length : bracket;
+            var head = title.Substring(offset, headEnd - offset);
+            var trimmed = head.TrimEnd();
+
+            var names = new List<string>();
+            var depth = 0;
+            var start = 0;
+
+            for (var i = 0; i < trimmed.Length; i++)
+            {
+                var c = trimmed[i];
+
+                if (c == '(')
+                {
+                    depth++;
+                }
+                else if (c == ')')
+                {
+                    depth = Math.Max(0, depth - 1);
+                }
+                else if (depth == 0 && c == '/' && i > 0 && trimmed[i - 1] == ' ' && i + 1 < trimmed.Length && trimmed[i + 1] == ' ')
+                {
+                    names.Add(trimmed.Substring(start, i - 1 - start));
+                    start = i + 2;
+                }
+            }
+
+            names.Add(trimmed.Substring(start));
+
+            return (title.Substring(0, offset), names, head.Substring(trimmed.Length), title.Substring(headEnd));
+        }
+
+        // Letters inside parentheses (a genre list, a season token) do not tell the language of the name itself.
+        private static bool IsCyrillicMajority(string name)
+        {
+            var letters = 0;
+            var cyrillic = 0;
+            var depth = 0;
+
+            foreach (var c in name)
+            {
+                if (c == '(')
+                {
+                    depth++;
+                }
+                else if (c == ')')
+                {
+                    depth = Math.Max(0, depth - 1);
+                }
+                else if (depth == 0 && char.IsLetter(c))
+                {
+                    letters++;
+
+                    if (c >= '\u0400' && c <= '\u04FF')
+                    {
+                        cyrillic++;
+                    }
+                }
+            }
+
+            return cyrillic * 2 > letters;
+        }
+
+        // Drops the " / "-separated names of a topic title that are mostly Cyrillic, instead of leaving the latin crumbs of
+        // "Некий ITEM тёмной стороны" or "Стальная тревога! IV" behind once the letters are stripped. A season token inside a
+        // dropped name ("Демоны старшей школы (S3)") is kept as a name of its own, the stranded-token rule moves it behind the
+        // first latin title. Nothing is dropped when no latin name would be left.
+        private string RemoveCyrillicSegments(string title)
+        {
+            var (prefix, names, trailing, tail) = SplitTitle(title);
+
+            if (names.Count < 2 || string.IsNullOrWhiteSpace(string.Concat(names)))
+            {
+                return title;
+            }
+
+            var kept = new List<string>();
+            string token = null;
+
+            foreach (var name in names)
+            {
+                var hasLetters = name.Any(char.IsLetter);
+                var drop = hasLetters ? IsCyrillicMajority(name) && !_titleEpisodeInfoRegex.IsMatch(_titleSeasonTokenRegex.Replace(name, string.Empty)) : !name.Any(char.IsLetterOrDigit);
+
+                if (!drop)
+                {
+                    kept.Add(name);
+                    continue;
+                }
+
+                var match = _titleSeasonTokenRegex.Match(name);
+
+                if (token == null && match.Success)
+                {
+                    token = match.Value;
+                }
+            }
+
+            if (kept.Count == 0 || (kept.Count == names.Count && token == null))
+            {
+                return title;
+            }
+
+            if (token != null && !kept.Any(n => _titleSeasonTokenRegex.IsMatch(n)))
+            {
+                kept.Insert(0, token);
+            }
+
+            return prefix + string.Join(" / ", kept) + trailing + tail;
+        }
+
+        // A "[TV]" anime topic without a "(ТВ-N)" token is the first season ("Fullmetal Panic! / Full Metal Panic! [TV] [24 из 24]").
+        // The token is added behind the first name so that the season handling below treats it like any other season.
+        // Titles with a sequel marker are left alone, there is no telling which season they are.
+        private string AddImplicitFirstSeason(string title)
+        {
+            if (!_tvTitleAnimeSpecialTagRegex.IsMatch(title) ||
+                !_tvTitleAnimeEpisodeCountRegex.IsMatch(title) ||
+                _tvTitleAnimeSeasonTokenRegex.IsMatch(title))
+            {
+                return title;
+            }
+
+            var (prefix, names, trailing, tail) = SplitTitle(title);
+
+            if (names.Any(n => _titleSequelMarkerRegex.IsMatch(n) || _titleTrailingNumberRegex.IsMatch(n)) ||
+                !names.Any(n => n.Any(char.IsLetter) && !IsCyrillicMajority(n)))
+            {
+                return title;
+            }
+
+            names[0] += " (S1)";
+
+            return prefix + string.Join(" / ", names) + trailing + tail;
+        }
+
+        // "Gekijouban Sword Art Online: Ordinal Scale / SAO: OS [Movie] [RUS(int), JAP] [2017, BDRip] [720p]" becomes
+        // "... SAO: OS (2017) [RUS(int), JAP] [2017, BDRip] [720p]": the name followed by the year is what Radarr matches on.
+        private string NormalizeAnimeMovie(string title)
+        {
+            var movie = _animeMovieTagRegex.Match(title);
+
+            if (!movie.Success)
+            {
+                return title;
+            }
+
+            var year = _titleYearBracketRegex.Match(movie.Groups["rest"].Value);
+
+            if (!year.Success)
+            {
+                return title;
+            }
+
+            return $"{movie.Groups["name"].Value.TrimEnd()} ({year.Groups["year"].Value}) {movie.Groups["rest"].Value}";
         }
 
         // RuTracker anime topics carry the season as "(ТВ-3)" and the episode count as "[12+6 из 12+6]".
