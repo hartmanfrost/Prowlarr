@@ -1800,8 +1800,14 @@ namespace NzbDrone.Core.Indexers.Definitions
         // Markers of a season other than the first one in the title of a "[TV]" topic that carries no "(ТВ-N)" token: roman
         // numerals, "2nd Season", "Part 2", "The Second Raid", a number closing a title segment ("... Samayou 3") and their
         // russian counterparts. Sonarr maps "Full Metal Panic! Invisible Victory (S1)" to season 1 of Full Metal Panic!, so
-        // the implicit first season is not added when any of them is present.
+        // the implicit first season is not added when any of them is present, and a season is only taken from them when a latin
+        // name states its number outright (see _titleExplicitSeasonRegex).
         private readonly Regex _titleSequelMarkerRegex = new(@"\b(?:II|III|IV|VI|VII|VIII|IX)\b|\bSeasons?\b|\bParts?\s*\d|\b(?:Second|Third|Fourth|Fifth|Final|Next|Another|Returns?)\b|\d(?:st|nd|rd|th)\b|(?:Сезон|Новый|Новая|Новое|Второй|Вторая|Третий|Финал|Продолжение)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        // A season number written out in a latin name: "Season 3", "3rd Season", "Jobless Reincarnation III". Roman numerals
+        // are only read from II up, a bare "I" is a word, and a bare trailing arabic number is not enough ("Samayou 3").
+        private readonly Regex _titleExplicitSeasonRegex = new(@"\bSeasons?\s+(?<num>\d{1,2})\b|\b(?<num>\d{1,2})(?:st|nd|rd|th)\s+Seasons?\b|(?-i:\b(?<roman>II|III|IV|VI|VII|VIII|IX)\b(?!\.))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private readonly Regex _titleSplitCourRegex = new(@"\b(?:Parts?|Cours?)\s*\d", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private readonly Regex _titleTrailingNumberRegex = new(@"[A-Za-z!?.\)]\s+\d{1,2}$", RegexOptions.Compiled);
 
         // "Name [Movie] [RUS(int), JAP] [2017, BDRip]": the tag between the title and the audio list hides the end of the title
@@ -1838,7 +1844,7 @@ namespace NzbDrone.Core.Indexers.Definitions
                 title = _tvTitleRusEpisodeOfRegex.Replace(title, "E$1 of $2");
                 title = _tvTitleRusEpisodeRegex.Replace(title, "E$1");
                 title = _tvTitleRusSeasonAnimeRegex.Replace(title, "S$1");
-                title = AddImplicitFirstSeason(title);
+                title = AddImplicitSeason(title);
                 title = NormalizeAnimeSeason(title);
             }
             else if (IsAnyMovieCategory(categories))
@@ -2061,10 +2067,13 @@ namespace NzbDrone.Core.Indexers.Definitions
             return prefix + string.Join(" / ", kept) + trailing + tail;
         }
 
-        // A "[TV]" anime topic without a "(ТВ-N)" token is the first season ("Fullmetal Panic! / Full Metal Panic! [TV] [24 из 24]").
-        // The token is added behind the first name so that the season handling below treats it like any other season.
-        // Titles with a sequel marker are left alone, there is no telling which season they are.
-        private string AddImplicitFirstSeason(string title)
+        // A "[TV]" anime topic without a "(ТВ-N)" token that counts its episodes ("[24 из 24]") still names its season somewhere:
+        // either not at all (the first season: "Fullmetal Panic! / Full Metal Panic! [TV] [24 из 24]") or in a latin name
+        // ("Mushoku Tensei III: ...", "... Jobless Reincarnation Season 3", "... 2nd Season"). The season token is added behind
+        // the first name so that the season handling below treats it like any other season. A sequel marker that carries no
+        // season number ("The Second Raid", "Invisible Victory", "Part 2") leaves the title alone, there is no telling which
+        // season it is.
+        private string AddImplicitSeason(string title)
         {
             if (!_tvTitleAnimeSpecialTagRegex.IsMatch(title) ||
                 !_tvTitleAnimeEpisodeCountRegex.IsMatch(title) ||
@@ -2075,15 +2084,70 @@ namespace NzbDrone.Core.Indexers.Definitions
 
             var (prefix, names, trailing, tail) = SplitTitle(title);
 
-            if (names.Any(n => _titleSequelMarkerRegex.IsMatch(n) || _titleTrailingNumberRegex.IsMatch(n)) ||
-                !names.Any(n => n.Any(char.IsLetter) && !IsCyrillicMajority(n)))
+            if (!names.Any(n => n.Any(char.IsLetter) && !IsCyrillicMajority(n)))
             {
                 return title;
             }
 
-            names[0] += " (S1)";
+            var season = 1;
+
+            if (names.Any(n => _titleSequelMarkerRegex.IsMatch(n) || _titleTrailingNumberRegex.IsMatch(n)))
+            {
+                var explicitSeason = FindExplicitSeason(names);
+
+                if (explicitSeason == null)
+                {
+                    return title;
+                }
+
+                season = explicitSeason.Value;
+            }
+
+            names[0] += $" (S{season})";
 
             return prefix + string.Join(" / ", names) + trailing + tail;
+        }
+
+        // The season number a latin name states outright: "Season 3", "2nd Season", a roman numeral. null when none does or
+        // the names disagree. A split cour ("Part 2", "Cour 2") does not tell where its episodes sit in the season.
+        private int? FindExplicitSeason(List<string> names)
+        {
+            var seasons = new HashSet<int>();
+
+            foreach (var name in names.Where(n => n.Any(char.IsLetter) && !IsCyrillicMajority(n)))
+            {
+                if (_titleSplitCourRegex.IsMatch(name))
+                {
+                    return null;
+                }
+
+                foreach (Match match in _titleExplicitSeasonRegex.Matches(name))
+                {
+                    var number = match.Groups["num"].Success ? int.Parse(match.Groups["num"].Value) : RomanToNumber(match.Groups["roman"].Value);
+
+                    if (number is >= 2 and <= 20)
+                    {
+                        seasons.Add(number);
+                    }
+                }
+            }
+
+            return seasons.Count == 1 ? seasons.First() : null;
+        }
+
+        private static int RomanToNumber(string roman)
+        {
+            return roman.ToUpperInvariant() switch
+            {
+                "II" => 2,
+                "III" => 3,
+                "IV" => 4,
+                "VI" => 6,
+                "VII" => 7,
+                "VIII" => 8,
+                "IX" => 9,
+                _ => 0
+            };
         }
 
         // "Gekijouban Sword Art Online: Ordinal Scale / SAO: OS [Movie] [RUS(int), JAP] [2017, BDRip] [720p]" becomes

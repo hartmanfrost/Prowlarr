@@ -67,9 +67,24 @@ namespace NzbDrone.Core.Test.IndexerTests.RuTrackerTests
         // series, so a title with a sequel marker keeps the old episode count instead of getting a guessed season.
         [TestCase("Стальная тревога! IV / Fullmetal Panic! Invisible Victory / Full Metal Panic! Invisible Victory [TV] [12 из 12] [JAP] [2018, приключения, BDRip] [1080p]", "Fullmetal Panic! Invisible Victory / Full Metal Panic! Invisible Victory [TV] E12 of 12 [JAP] [2018, BDRip] [1080p]")]
         [TestCase("Стальная тревога! Новый рейд / Fullmetal Panic! The Second Raid / Full Metal Panic! TSR The Second Raid [TV] [13 из 13] [RUS(int), JAP] [2005, приключения, BDRip] [720p]", "Fullmetal Panic! The Second Raid / Full Metal Panic! TSR The Second Raid [TV] E13 of 13 [RUS(int), JAP] [2005, BDRip] [720p]")]
-        [TestCase("Мастера Меча Онлайн: Алисизация - Война Андерворлда 2 / Sword Art Online: Alicization - War of Underworld 2nd Season [TV] [11 из 11] [RUS(int), JAP] [2020, экшен, BDRip]", "Sword Art Online: Alicization - War of Underworld 2nd Season [TV] E11 of 11 [RUS(int), JAP] [2020, BDRip]")]
+        [TestCase("Мастера меча онлайн: Алисизация / Sword Art Online: Alicization [TV] [24 из 24] [RUS(int), JAP] [2018, экшен, BDRip]", "Sword Art Online: Alicization (S1) [TV] [RUS(int), JAP] [2018, BDRip]")]
+        [TestCase("Нечто / Something Part 2 [TV] [12 из 12] [RUS(int), JAP] [2021, BDRip]", "Something Part 2 [TV] E12 of 12 [RUS(int), JAP] [2021, BDRip]")]
+        [TestCase("Нечто / Something 2nd Season Part 2 [TV] [12 из 12] [RUS(int), JAP] [2021, BDRip]", "Something 2nd Season Part 2 [TV] E12 of 12 [RUS(int), JAP] [2021, BDRip]")]
         [TestCase("Школа Мертвецов [TV] [12 из 12] [RUS(int), JAP] [2010, боевик, ужасы, этти, BDRip] [720p] [HD]", "[TV] E12 of 12 [RUS(int), JAP] [2010, BDRip] [720p] [HD]")]
         public void should_not_guess_first_season_for_sequels_or_untitled_topics(string title, string expected)
+        {
+            _titleParser.Parse(title, AnimeCategories, stripCyrillicLetters: true, addRussianToTitle: true)
+                .Should().Be(expected);
+        }
+
+        // A count-only topic ("[14 из 14]") has no season token, so it used to come out as "E14 of 14", which Sonarr reads as the
+        // single episode 14. The season is taken from a number the latin names state outright.
+        [TestCase("Мастера Меча Онлайн: Алисизация - Война Андерворлда 2 / Sword Art Online: Alicization - War of Underworld 2nd Season [TV] [11 из 11] [RUS(int), JAP] [2020, экшен, BDRip]", "Sword Art Online: Alicization - War of Underworld 2nd Season (S2) [TV] [RUS(int), JAP] [2020, BDRip]")]
+        [TestCase("Реинкарнация безработного III / Mushoku Tensei III: Isekai Ittara Honki Dasu / Mushoku Tensei: Jobless Reincarnation Season 3 [TV] [14 из 14] [RUS(int), JAP] [2026, WEB-DL] [1080p]", "Mushoku Tensei III: Isekai Ittara Honki Dasu (S3) / Mushoku Tensei: Jobless Reincarnation Season 3 [TV] [RUS(int), JAP] [2026, WEB-DL] [1080p]")]
+        [TestCase("Реинкарнация безработного III / Mushoku Tensei III: Isekai Ittara Honki Dasu [TV] [01-11 из 14] [RUS(int), JAP] [2026, WEB-DL] [1080p]", "Mushoku Tensei III: Isekai Ittara Honki Dasu (S03E01-11) [TV] [RUS(int), JAP] [2026, WEB-DL] [1080p]")]
+        [TestCase("Реинкарнация безработного II / Mushoku Tensei II: Isekai Ittara Honki Dasu [TV+Special] [12+1 из 12+1] [RUS(int), JAP] [2023, BDRip] [1080p]", "Mushoku Tensei II: Isekai Ittara Honki Dasu (S2) [TV+SP] [RUS(int), JAP] [2023, BDRip] [1080p]")]
+        [TestCase("Жизнь в альтернативном мире с нуля 2 / Re:Zero kara Hajimeru Isekai Seikatsu 2 / Re:Zero - Starting Life in Another World 2nd Season [TV] [13 из 13] [RUS(ext), JAP] [2020, BDRip] [1080p]", "Re:Zero kara Hajimeru Isekai Seikatsu 2 (S2) / Re:Zero - Starting Life in Another World 2nd Season [TV] [RUS(ext), JAP] [2020, BDRip] [1080p]")]
+        public void should_take_season_of_count_only_topic_from_latin_name(string title, string expected)
         {
             _titleParser.Parse(title, AnimeCategories, stripCyrillicLetters: true, addRussianToTitle: true)
                 .Should().Be(expected);
