@@ -62,7 +62,7 @@ namespace NzbDrone.Core.Test.IndexerTests.TolokaTests
         [TestCase("Sousou no Frieren (S2) (2025) WEB-DL 1080p H.265 (S2)", "Sousou no Frieren (S2) (2025) WEB-DL 1080p H.265 (S2)")]
         public void should_append_ukr_only_for_dub_groups_without_language_token(string title, string expected)
         {
-            _titleParser.Parse(title, TvCategories, stripCyrillicLetters: true).Should().Be(expected);
+            TolokaTitleParser.AppendUkrainianForDubGroups(_titleParser.Parse(title, TvCategories, stripCyrillicLetters: true)).Should().Be(expected);
         }
 
         [Test]
@@ -71,11 +71,11 @@ namespace NzbDrone.Core.Test.IndexerTests.TolokaTests
             // FanVoxUA writes "1080р" with a Cyrillic "р" that the Cyrillic stripping would otherwise eat,
             // leaving a bare "1080" that Sonarr reads as season 10.
             _titleParser.Parse("Раґна Крімзон (S1) / Ragna Crimson (S1) (2023) WEB-DL 1080р H.265 [FanVoxUA]", TvCategories, stripCyrillicLetters: true)
-                .Should().Be("Ragna Crimson (S1) (2023) WEB-DL 1080p H.265 [FanVoxUA] (S1) Ukr");
+                .Should().Be("Ragna Crimson (S1) (2023) WEB-DL 1080p H.265 [FanVoxUA] (S1)");
         }
 
         [TestCase("Mahou Shoujo ni Akogarete (S1) (2024) WEB-DL 1080 Jap | sub Ukr [Okashi]", "Mahou Shoujo ni Akogarete (S1) (2024) WEB-DL 1080p Jap | sub Ukr [Okashi]")]
-        [TestCase("Valkyrie Drive: Mermaid (S1) (2015) HDTV 720 [FanVoxUA]", "Valkyrie Drive: Mermaid (S1) (2015) HDTV 720p [FanVoxUA] Ukr")]
+        [TestCase("Valkyrie Drive: Mermaid (S1) (2015) HDTV 720 [FanVoxUA]", "Valkyrie Drive: Mermaid (S1) (2015) HDTV 720p [FanVoxUA]")]
         [TestCase("Sekai Saikyou no Majo (S1) (2026) WEBRip Ai Rem 1080 Ukr/Jap", "Sekai Saikyou no Majo (S1) (2026) WEBRip Ai Rem 1080p Ukr/Jap")]
         [TestCase("Mob Psycho 100 (S1) (2016) BDRip 1080p Ukr/Jap", "Mob Psycho 100 (S1) (2016) BDRip 1080p Ukr/Jap")]
         [TestCase("Sample (S1E720) (2016) BDRip 1080p", "Sample (S1E720) (2016) BDRip 1080p")]
@@ -116,7 +116,7 @@ namespace NzbDrone.Core.Test.IndexerTests.TolokaTests
         public void should_convert_progress_in_brackets_to_episode_range_when_season_is_named()
         {
             _titleParser.Parse("Ізекай (S2) / Isekai Nonbiri Nouka (S2) [5/12] (2026) WEB-DL 1080p H.265 [FanVoxUA]", TvCategories, stripCyrillicLetters: true)
-                .Should().Be("Isekai Nonbiri Nouka (S2) (S02E01-05) (2026) WEB-DL 1080p H.265 [FanVoxUA] (S2) Ukr");
+                .Should().Be("Isekai Nonbiri Nouka (S2) (S02E01-05) (2026) WEB-DL 1080p H.265 [FanVoxUA] (S2)");
         }
 
         [Test]

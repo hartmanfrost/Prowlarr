@@ -435,6 +435,8 @@ namespace NzbDrone.Core.Indexers.Definitions
                     parsedTitle = $"{parsedTitle} [{author.Trim()}]";
                 }
 
+                parsedTitle = TolokaTitleParser.AppendUkrainianForDubGroups(parsedTitle);
+
                 var release = new TorrentInfo
                 {
                     Guid = infoUrl,
@@ -634,11 +636,12 @@ namespace NzbDrone.Core.Indexers.Definitions
             // replace multiple spaces with a single space
             title = Regex.Replace(title, @"\s+", " ");
 
-            return AppendUkrainianForDubGroups(title.Trim());
+            return title.Trim();
         }
 
         // Adds the missing language token for Ukrainian-dub release groups so that Sonarr detects Ukrainian.
-        private static string AppendUkrainianForDubGroups(string title)
+        // Runs on the final release title, after the uploader was appended as a "[group]" tag.
+        public static string AppendUkrainianForDubGroups(string title)
         {
             if (LanguageTokenRegex.IsMatch(title))
             {
