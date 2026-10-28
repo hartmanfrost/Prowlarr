@@ -548,6 +548,20 @@ namespace NzbDrone.Core.Indexers.Definitions
         private readonly Regex _keptTokenRegex = new(@"\((?:S|E)[^)]+\)", RegexOptions.Compiled);
         private readonly Regex _segmentSeparatorRegex = new(@"\s/\s?", RegexOptions.Compiled);
 
+        // Release groups whose releases always carry a Ukrainian dub but whose titles often omit the language token
+        // ("... WEB-DL 1080p H.265 (S2) [FanVoxUA]"), so Sonarr parses the language as Unknown.
+        // Built from Toloka search results: every title of these groups that names a language lists Ukr
+        // (FanVoxUA: Ukr, Ukr/Jpn, Ukr/Jap; Kioto_anime: Ukr/Jpn, Ukr/Jap). Never add a group by category:
+        // subtitle-only groups (e.g. panteliymas: "H.265 | sub Ukr") must stay Unknown.
+        private static readonly HashSet<string> UkrainianDubGroups = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "FanVoxUA",
+            "Kioto_anime"
+        };
+
+        private static readonly Regex LanguageTokenRegex = new(@"(?<!\p{L})(?:\d+x)?(?:ukr|jap|jpn|eng|rus|pol|ger|fre|multi)(?!\p{L})", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex BracketGroupRegex = new(@"\[([^\[\]]+)\]", RegexOptions.Compiled);
+
         private readonly Regex _strandedTokenRegex = new(@"^[^a-zA-Z\[\(]*(\((?:S|E)[^)]+\))\s*/\s*", RegexOptions.Compiled);
 
         public string Parse(string title, ICollection<IndexerCategory> categories, bool stripCyrillicLetters = true)
@@ -620,7 +634,20 @@ namespace NzbDrone.Core.Indexers.Definitions
             // replace multiple spaces with a single space
             title = Regex.Replace(title, @"\s+", " ");
 
-            return title.Trim();
+            return AppendUkrainianForDubGroups(title.Trim());
+        }
+
+        // Adds the missing language token for Ukrainian-dub release groups so that Sonarr detects Ukrainian.
+        private static string AppendUkrainianForDubGroups(string title)
+        {
+            if (LanguageTokenRegex.IsMatch(title))
+            {
+                return title;
+            }
+
+            var isDubGroup = BracketGroupRegex.Matches(title).Any(m => UkrainianDubGroups.Contains(m.Groups[1].Value.Trim()));
+
+            return isDubGroup ? $"{title} Ukr" : title;
         }
 
         private static string FixMixedScriptWord(Match match)
